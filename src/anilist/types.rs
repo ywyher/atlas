@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use serde::{Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename = "Media")]
@@ -14,11 +14,35 @@ pub struct AnimeQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct BatchAnimeQuery {
+    #[serde(rename = "Page")]
+    pub page: Option<Page>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Page {
+    pub page_info: PageInfo,
+    pub media: Vec<Media>
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageInfo {
+    pub total: i32,
+    pub current_page: i32,
+    pub last_page: i32,
+    pub has_next_page: bool,
+    pub per_page: i32,
+}
+
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Edge<T> {
     pub edges: T
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Media {
     pub id: i32,
@@ -44,50 +68,52 @@ pub struct Media {
     pub studios: Option<Edge<Vec<Studio>>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct StudioNode {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Studio {
     #[serde(rename = "isMain")]
     pub is_main: bool,
     pub node: Option<StudioNode>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Title {
     pub english: Option<String>,
     pub romaji: Option<String>,
     pub native: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AiringSchedule {
-    pub episode: i32,
-    pub airing_at: i32,
-    pub time_until_airing: i32,
+    pub episode: Option<i32>,
+    pub airing_at: Option<i32>,
+    pub time_until_airing: Option<i32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FuzzyDate {
     pub day: Option<i32>,
     pub month: Option<i32>,
     pub year: Option<i32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct MediaCoverImage {
     pub medium: Option<String>,
     pub large: Option<String>,
     pub extra_large: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MediaFormat {
     Tv,
+    #[serde(rename = "TV_SHORT")]
     TvShort,
     Movie,
     Special,
@@ -99,7 +125,7 @@ pub enum MediaFormat {
     OneShot,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MediaSeason {
     Winter,
@@ -108,7 +134,7 @@ pub enum MediaSeason {
     Fall,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MediaStatus {
     Finished,

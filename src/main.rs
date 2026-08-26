@@ -9,15 +9,7 @@ use config::Config;
 async fn main() -> Result<()> {
     let config = Config::from_env()?;
     let client = Client::new(&config);
-
-    let mut last: Option<GetMediaResponse> = None;
-    for i in 1..=100 {
-        let res = client.get_media(9253).await?;
-        println!("{i}: remaining={:?}", res.headers.get("x-ratelimit-remaining"));
-        last = Some(res);
-    }
-
-    println!("{:#?}", last);
-
+    client.scrape().await?;
+    
     Ok(())
 }

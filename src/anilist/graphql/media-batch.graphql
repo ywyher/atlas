@@ -1,13 +1,16 @@
-query ScrapeAnilist($page: Int, $perPage: Int) {
+query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: FuzzyDateInt) {
   Page(page: $page, perPage: $perPage) {
-    pageInfo {
+    pageInfo { 
       total
-      currentPage
-      lastPage
       hasNextPage
-      perPage
+      lastPage
     }
-    media(type: ANIME, sort: ID) {
+    media(
+      type: ANIME
+      sort: START_DATE
+      startDate_greater: $start
+      startDate_lesser: $end
+    ) {
       id
       idMal
       title {
@@ -33,6 +36,12 @@ query ScrapeAnilist($page: Int, $perPage: Int) {
       genres
       averageScore
       
+      nextAiringEpisode {
+        episode
+        airingAt
+        timeUntilAiring
+      }
+
       startDate {
         day
         month
@@ -43,12 +52,6 @@ query ScrapeAnilist($page: Int, $perPage: Int) {
         day
         month
         year
-      }
-      
-      nextAiringEpisode {
-        episode
-        airingAt
-        timeUntilAiring
       }
       
       studios {
@@ -96,10 +99,21 @@ query ScrapeAnilist($page: Int, $perPage: Int) {
               romaji
               native
             }
+            bannerImage
             coverImage {
               medium
               large
               extraLarge
+            }
+            startDate {
+              year
+              month
+              day
+            }
+            endDate {
+              year
+              month
+              day
             }
             status
             format

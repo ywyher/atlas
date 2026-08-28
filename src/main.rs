@@ -1,7 +1,7 @@
 mod anilist;
 mod config;
 
-use anilist::client::{Client, GetMediaResponse};
+use anilist::client::{Client};
 use anyhow::Result;
 use config::Config;
 

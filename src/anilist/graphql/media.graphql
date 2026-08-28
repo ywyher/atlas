@@ -1,4 +1,4 @@
-query AnilistQuery(
+query GetMedia(
   $id: Int!
 ) {
   Media(id: $id) {
@@ -94,6 +94,16 @@ query AnilistQuery(
             medium
             large
             extraLarge
+          }
+          startDate {
+            year
+            month
+            day
+          }
+          endDate {
+            year
+            month
+            day
           }
           status
           format

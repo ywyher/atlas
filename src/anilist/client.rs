@@ -6,7 +6,7 @@ use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use nonzero_ext::*;
 use reqwest::{StatusCode, header::HeaderMap};
 use serde_json::json;
-use tokio::{fs, runtime::RuntimeFlavor::CurrentThread, time::Instant};
+use tokio::{fs, time::Instant};
 use std::time::Duration;
 use std::collections::HashSet;
 use thiserror::Error;
@@ -16,7 +16,6 @@ const GET_MEDIA_BATCH_QUERY: &str = include_str!("./graphql/media-batch.graphql"
 const RATE_LIMIT: u32 = 29; // anilist rate limits at 30
 const PER_PAGE: i32 = 50; // anilist's max
 const MAX_PAGE: i32 = 5000 / PER_PAGE; // 100
-const MAX_RETRIES: u32 = 5;
 const FOLDER: &str = "data";
 const FILE_MEDIA: &str = "anilist.json";
 const FILE_IDS: &str = "anilist-ids.json";
@@ -238,7 +237,7 @@ impl Client {
         self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
         println!("Scraping took {:?}", time.elapsed());
 
-        let json = serde_json::to_string_pretty(&data)?;
+        let json = serde_json::to_string_pretty(&2)?;
         let ids = serde_json::to_string_pretty(&seen)?;
         fs::create_dir_all(FOLDER).await?;
         fs::write(format!("{FOLDER}/{FILE_MEDIA}"), json).await?;

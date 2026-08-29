@@ -1,13 +1,14 @@
 mod anilist;
 mod config;
 mod jiten;
+mod merge;
 
 use anilist::client::{Client as AnilistClient};
 use jiten::client::{Client as JitenClient};
 use config::Config;
 use anyhow::Result;
-use tracing::{info, trace};
 use tracing_subscriber::{self, EnvFilter};
+use merge::merge::{Merge};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,8 +24,11 @@ async fn main() -> Result<()> {
     let anilist = AnilistClient::new(&config);
     anilist.scrape().await?;
     
-    let jiten = JitenClient::new(&config);
-    jiten.scrape().await?;
+    // let jiten = JitenClient::new(&config);
+    // jiten.scrape().await?;
+
+    // Merge::load_data().await?;
+
     
     Ok(())
 }

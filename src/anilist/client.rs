@@ -164,11 +164,12 @@ impl Client {
         info!(start, end, "starting scrape range");
 
         loop {
-            let time = Instant::now();
             if self.limiter.check().is_err() {
                 debug!("local rate limiter engaged, waiting for next token");
                 self.limiter.until_ready().await;
             }
+            
+            let time = Instant::now();
             debug!(batch = *batch, page = page_number, "requesting batch");
             let res = self.get_media_batch(page_number, start, end).await?;
             debug!(batch = *batch, elapsed = ?time.elapsed(), "batch request completed");

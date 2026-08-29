@@ -7,6 +7,7 @@ use nonzero_ext::*;
 use reqwest::{StatusCode, header::HeaderMap};
 use serde_json::json;
 use tokio::{fs, time::Instant};
+use tracing::{debug, info, warn};
 use std::time::Duration;
 use std::collections::HashSet;
 use thiserror::Error;
@@ -55,7 +56,7 @@ impl Client {
     pub fn new(config: &Config) -> Self {
         let quota = Quota::per_minute(nonzero!(RATE_LIMIT))
             .allow_burst(nonzero!(1u32));
-        
+
         Self {
             http: reqwest::Client::new(),
             api_url: config.anilist_api_url.clone(),
@@ -92,13 +93,13 @@ impl Client {
             .and_then(|d| d.media)
             .ok_or(AniListError::NotFound(id))?;
 
-        println!("{:#?}", media);
+        debug!(id, "fetched media from AniList");
 
         return Ok(GetMediaResponse { media, headers });
     }
 
     pub async fn get_media_batch(
-        &self, 
+        &self,
         page: i32,
         start: i32,
         end: i32,
@@ -159,24 +160,22 @@ impl Client {
     ) -> Result<()> {
         let mut buffer: Vec<Media> = Vec::new();
         let mut page_number = 1;
-        
-        println!("-------- scrape {start} - {end}");
-        
+
+        info!(start, end, "starting scrape range");
+
         loop {
             let time = Instant::now();
             if self.limiter.check().is_err() {
-                println!("governor rate limited, waiting...");
+                debug!("local rate limiter engaged, waiting for next token");
                 self.limiter.until_ready().await;
             }
-            println!("Requesting Batch {batch}");
+            debug!(batch = *batch, page = page_number, "requesting batch");
             let res = self.get_media_batch(page_number, start, end).await?;
-            println!("Batch {batch} took {:?}", time.elapsed());
+            debug!(batch = *batch, elapsed = ?time.elapsed(), "batch request completed");
 
             if res.status_code == reqwest::StatusCode::TOO_MANY_REQUESTS {
                 let wait = Self::retry_wait(&res.headers);
-                eprintln!(
-                    "anilist rate limited), waiting {:#?}", wait
-                );
+                warn!(?wait, "AniList rate limited, backing off");
                 tokio::time::sleep(wait).await;
                 continue;
             }
@@ -192,11 +191,13 @@ impl Client {
             if !has_next {
                 // < 5000 entries, no issues
                 // window fit entirely under the cap - keep everything, done
+                let before = out.len();
                 for m in std::mem::take(&mut buffer) {
                     if seen.insert(m.id) {
                         out.push(m);
                     }
                 }
+                info!(start, end, added = out.len() - before, "scrape range complete");
                 return Ok(());
             }
 
@@ -206,15 +207,22 @@ impl Client {
                     .and_then(|d| Self::fuzzy_date_to_int(&d, -1))
                     .ok_or_else(|| anyhow!("could not compute cutoff date for pagination"))?;
 
+                let before = out.len();
                 for m in std::mem::take(&mut buffer) {
                     if seen.insert(m.id) {
                         out.push(m);
                     }
                 }
-                
+
                 *batch += 1;
 
-                println!("##### Recursion");
+                info!(
+                    cutoff,
+                    end,
+                    batch = *batch,
+                    added = out.len() - before,
+                    "page limit reached, recursing with new cutoff date"
+                );
                 return Box::pin(self.scrape_range(cutoff, end, seen, out, batch)).await;
             }
 
@@ -234,14 +242,20 @@ impl Client {
         let end: i32 = tomorrow.year() * 10_000 + tomorrow.month() as i32 * 100 + tomorrow.day() as i32;
         let time = Instant::now();
 
-        self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
-        println!("Scraping took {:?}", time.elapsed());
+        info!(start, end, "starting AniList scrape");
 
-        let json = serde_json::to_string_pretty(&2)?;
+        self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
+        info!(elapsed = ?time.elapsed(), total = data.len(), "AniList scrape complete");
+
+        let json = serde_json::to_string_pretty(&data)?;
         let ids = serde_json::to_string_pretty(&seen)?;
         fs::create_dir_all(FOLDER).await?;
         fs::write(format!("{FOLDER}/{FILE_MEDIA}"), json).await?;
         fs::write(format!("{FOLDER}/{FILE_IDS}"), ids).await?;
+
+        info!(path = %format!("{FOLDER}/{FILE_MEDIA}"), "wrote AniList media to disk");
+        info!(path = %format!("{FOLDER}/{FILE_IDS}"), count = seen.len(), "wrote AniList ids to disk");
+
         Ok(())
     }
 
@@ -276,15 +290,12 @@ impl Client {
     fn fuzzy_date_to_int(date: &FuzzyDate, margin_days: i64) -> Option<i32> {
         let year = date.year?;
 
-        // No margin: keep your original behavior, unknown month/day stay 0
         if margin_days == 0 {
             let month = date.month.unwrap_or(0);
             let day = date.day.unwrap_or(0);
             return Some(year * 10_000 + month * 100 + day);
         }
 
-        // Applying a margin needs a real date to shift, so fill in
-        // missing month/day with sane defaults (1st of month/year)
         let month = date.month.unwrap_or(1);
         let day = date.day.unwrap_or(1);
 
@@ -296,7 +307,6 @@ impl Client {
 
     fn today_plus_buffer() -> i32 {
         let now = Local::now();
-        // one year out, to catch already-announced future releases
         (now.year() + 1) as i32 * 10000 + (now.month() as i32) * 100 + now.day() as i32
     }
 }

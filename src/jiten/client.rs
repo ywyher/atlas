@@ -1,5 +1,6 @@
 use anyhow::{Result, Context};
 use tokio::{fs, time::Instant};
+use tracing::{debug, info};
 use crate::{jiten::types::{Media, JITEN_LINK_VALUES}, config::Config};
 use std::collections::HashMap;
 
@@ -22,11 +23,13 @@ impl Client {
         let api_url = &self.api_url;
         let endpoint = format!("{api_url}/api/media-deck/get-media-decks-by-type/anime");
 
+        info!(endpoint = %endpoint, "starting jiten scrape");
+
         let time = Instant::now();
         let res = reqwest::get(endpoint).await?;
         let data: Vec<Media> = res.json().await?;
 
-        println!("Scraping took {:?}", time.elapsed());
+        info!(elapsed = ?time.elapsed(), count = data.len(), "jiten scrape complete");
 
         let json = serde_json::to_string_pretty(&data)?;
         let ids_map = self.map_to_anilist_ids(Some(&data)).await?;
@@ -35,6 +38,9 @@ impl Client {
         fs::create_dir_all(FOLDER).await?;
         fs::write(format!("{FOLDER}/{FILE_MEDIA}"), json).await?;
         fs::write(format!("{FOLDER}/{FILE_IDS}"), ids_json).await?;
+
+        info!(path = %format!("{FOLDER}/{FILE_MEDIA}"), "wrote jiten media to disk");
+        info!(path = %format!("{FOLDER}/{FILE_IDS}"), count = ids_map.len(), "wrote anilist-to-jiten id map to disk");
 
         Ok(())
     }
@@ -47,7 +53,7 @@ impl Client {
         let media: &[Media] = match media {
             Some(m) => m,
             None => {
-                println!("Media wasn't provided, reading from disk");
+                debug!("media not provided, reading from disk");
                 let path = format!("{FOLDER}/{FILE_MEDIA}");
                 let contents = fs::read_to_string(path)
                     .await

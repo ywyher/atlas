@@ -15,7 +15,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        dotenvy::dotenv().ok();
+        dotenvy::from_filename(".env").ok();
+        dotenvy::from_filename_override(".env.local").ok();
         Ok(Self {
             anilist_api_url: env::var("ANILIST_API_URL")
                 .context("ANILIST_API_URL must be set in .env")?,

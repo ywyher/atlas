@@ -81,8 +81,6 @@ impl Client {
       .unwrap();
     info!(index = INDEX_ANIMES, count = media.len(), elapsed = ?time.elapsed(), "add documents to the index");
 
-    println!("{:#?}", documents);
-
     Ok(())
   }
 

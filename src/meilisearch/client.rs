@@ -47,6 +47,7 @@ impl Client {
         "animes.season",
         "animes.seasonYear",
         "animes.format",
+        "animes.popularity",
       ])
       .with_sortable_attributes([
         "language_stats.wordCount",

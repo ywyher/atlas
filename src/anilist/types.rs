@@ -58,6 +58,8 @@ pub struct Media {
     pub duration: Option<i32>,
     pub genres: Option<Vec<Option<String>>>,
     pub average_score: Option<i32>,
+    pub popularity: Option<i32>,
+    
     pub start_date: Option<FuzzyDate>,
     pub end_date: Option<FuzzyDate>,
     pub next_airing_episode: Option<AiringSchedule>,

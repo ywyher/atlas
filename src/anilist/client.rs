@@ -20,30 +20,15 @@ const PER_PAGE: i32 = 50; // anilist's max
 const MAX_PAGE: i32 = 5000 / PER_PAGE; // 100
 const FILE_MEDIA: &str = "anilist.json";
 const FILE_IDS: &str = "anilist-ids.json";
-
-#[derive(Debug, Error)]
-pub enum AniListError {
-    #[error("AniList returned HTTP {status}")]
-    HttpError { status: reqwest::StatusCode },
-
-    #[error("rate limited, exceeded max retries")]
-    RateLimitExceeded,
-
-    #[error("no media found for id {0}")]
-    NotFound(i32),
-}
-
-#[derive(Debug)]
-pub struct GetMediaResponse {
-    pub media: Media,
-    pub headers: HeaderMap,
-}
+const REQUEST_TIMEOUT_SECS: u64 = 30;
+const MAX_RETRIES: u32 = 5;
 
 #[derive(Debug)]
 pub struct GetMediaBatchResponse {
     pub page: Option<Page>,
     pub headers: HeaderMap,
-    pub status_code: StatusCode
+    pub status_code: StatusCode,
+    pub body: Option<String>, // raw body when status isn't success, for logging/retry decisions
 }
 
 pub struct Client {
@@ -53,51 +38,23 @@ pub struct Client {
     limiter: DefaultDirectRateLimiter,
 }
 
+
 impl Client {
     pub fn new(config: &Config) -> Self {
         let quota = Quota::per_minute(nonzero!(RATE_LIMIT))
             .allow_burst(nonzero!(1u32));
 
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .expect("failed to build reqwest client");
+
         Self {
-            http: reqwest::Client::new(),
+            http,
             api_url: config.anilist_api_url.clone(),
             data_folder: config.data_folder.clone(),
             limiter: RateLimiter::direct(quota),
         }
-    }
-
-    pub async fn get_media(&self, id: i32) -> Result<GetMediaResponse> {
-        let body = json!({
-            "query": GET_MEDIA_QUERY,
-            "variables": { "id": id }
-        });
-
-        let res = self
-            .http
-            .post(&self.api_url)
-            .json(&body)
-            .send()
-            .await
-            .context("failed to send request to AniList")?;
-
-        if !res.status().is_success() {
-            anyhow::bail!("AniList returned HTTP {}", res.status());
-        }
-
-        let headers = res.headers().clone();
-        let data: ApiResponse<AnimeQuery> = res
-            .json()
-            .await
-            .context("failed to parse AniList response as JSON")?;
-
-        let media = data
-            .data
-            .and_then(|d| d.media)
-            .ok_or(AniListError::NotFound(id))?;
-
-        debug!(id, "fetched media from AniList");
-
-        return Ok(GetMediaResponse { media, headers });
     }
 
     pub async fn get_media_batch(
@@ -130,17 +87,28 @@ impl Client {
         let headers = res.headers().clone();
 
         if status == StatusCode::TOO_MANY_REQUESTS {
+            let text = res.text().await.unwrap_or_default();
             return Ok(GetMediaBatchResponse {
                 page: None,
                 headers,
                 status_code: status,
+                body: Some(text)
             });
         }
+        
+        if !status.is_success() {
+            let text = res.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "AniList returned HTTP {} (body={:.500})",
+                status,
+                text
+            ));
+        }
 
-        let data: ApiResponse<BatchAnimeQuery> = res
-            .json()
-            .await
-            .context("failed to parse AniList response as JSON")?;
+
+        let text = res.text().await.context("failed to read AniList response body")?;
+        let data: ApiResponse<BatchAnimeQuery> = serde_json::from_str(&text)
+            .with_context(|| format!("failed to parse AniList response as JSON (body={:.500})", text))?;
 
         let page: Page = data
             .data
@@ -151,6 +119,7 @@ impl Client {
             page: Some(page),
             headers,
             status_code: status,
+            body: None,
         })
     }
 
@@ -164,6 +133,7 @@ impl Client {
     ) -> Result<()> {
         let mut buffer: Vec<Media> = Vec::new();
         let mut page_number = 1;
+        let mut retries: u32 = 0;
 
         info!(start, end, "starting scrape range");
 
@@ -175,19 +145,63 @@ impl Client {
             
             let time = Instant::now();
             debug!(batch = *batch, page = page_number, "requesting batch");
-            let res = self.get_media_batch(page_number, start, end).await?;
+            let res = match self.get_media_batch(page_number, start, end).await {
+                Ok(res) => res,
+                Err(e) => {
+                    // Network-level errors (e.g. timeout) are retried too, up to the cap.
+                    retries += 1;
+                    if retries > MAX_RETRIES {
+                        return Err(e).context(format!(
+                            "exceeded max retries ({MAX_RETRIES}) for page {page_number}"
+                        ));
+                    }
+                    warn!(
+                        error = %e,
+                        retries,
+                        max_retries = MAX_RETRIES,
+                        "request failed, retrying after backoff"
+                    );
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
             debug!(batch = *batch, elapsed = ?time.elapsed(), "batch request completed");
 
-            if res.status_code == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            if res.status_code == StatusCode::TOO_MANY_REQUESTS {
+                retries += 1;
+                if retries > MAX_RETRIES {
+                    return Err(anyhow!(
+                        "exceeded max retries ({MAX_RETRIES}) for page {page_number} (rate limited)"
+                    ));
+                }
                 let wait = Self::retry_wait(&res.headers);
-                warn!(?wait, "AniList rate limited, backing off");
+                warn!(?wait, retries, max_retries = MAX_RETRIES, "AniList rate limited, backing off");
                 tokio::time::sleep(wait).await;
                 continue;
             }
 
-            if !res.status_code.is_success() {
-                return Err(AniListError::HttpError { status: res.status_code }.into());
+            if res.status_code.is_server_error() {
+                retries += 1;
+                if retries > MAX_RETRIES {
+                    return Err(anyhow!(
+                        "exceeded max retries ({MAX_RETRIES}) for page {page_number}: HTTP {} (body={:.500})",
+                        res.status_code,
+                        res.body.as_deref().unwrap_or_default()
+                    ));
+                }
+                warn!(
+                    status = %res.status_code,
+                    body = %res.body.as_deref().unwrap_or_default(),
+                    retries,
+                    max_retries = MAX_RETRIES,
+                    "AniList server error, retrying after backoff"
+                );
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
             }
+
+            // success path — reset retry counter since we made forward progress
+            retries = 0;
 
             let page = res.page.expect("page present on success status");
             let has_next = page.page_info.has_next_page;

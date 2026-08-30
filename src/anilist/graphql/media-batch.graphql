@@ -35,6 +35,7 @@ query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: Fuzzy
       duration
       genres
       averageScore
+      popularity
       
       nextAiringEpisode {
         episode

@@ -1,0 +1,1 @@
+add popularity field for anilist

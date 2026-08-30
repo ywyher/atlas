@@ -6,11 +6,13 @@ mod anilist;
 mod config;
 mod jiten;
 mod merge;
+mod meilisearch;
 
 use crate::anilist::client::Client as AnilistClient;
-use crate::config::Config;
 use crate::jiten::client::Client as JitenClient;
 use crate::merge::merge::Merge;
+use crate::meilisearch::client::Client as MeiliClient;
+use crate::config::Config;
 use anyhow::Result;
 use tracing_subscriber::{self, EnvFilter};
 
@@ -24,13 +26,16 @@ async fn main() -> Result<()> {
     let config = Config::from_env()?;
 
     let anilist = AnilistClient::new(&config);
-    // anilist.scrape().await?;
+    anilist.scrape().await?;
 
     let jiten = JitenClient::new(&config);
-    // jiten.scrape().await?;
-
+    jiten.scrape().await?;
+    
     let merge = Merge::new(&config, anilist, jiten);
     merge.merge().await?;
+
+    let meili = MeiliClient::new(&config, merge);
+    meili.setup().await?;
 
     Ok(())
 }

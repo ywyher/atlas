@@ -25,6 +25,7 @@ pub struct TagObject {
 pub struct LanguageStats {
   pub deck_id: i64,
   pub word_count: i64,
+  pub character_count: i64,
   pub unique_word_count: i64,
   pub unique_word_used_once_count: i64,
   pub unique_kanji_count: i64,
@@ -59,6 +60,7 @@ pub struct Media {
 
   pub deck_id: i64,
   pub word_count: i64,
+  pub character_count: i64,
   pub unique_word_count: i64,
   pub unique_word_used_once_count: i64,
   pub unique_kanji_count: i64,
@@ -129,6 +131,7 @@ impl From<&Media> for LanguageStats {
         LanguageStats {
           deck_id: m.deck_id,
           word_count: m.word_count,
+          character_count: m.character_count,
           unique_word_count: m.unique_word_count,
           unique_word_used_once_count: m.unique_word_used_once_count,
           unique_kanji_count: m.unique_kanji_count,

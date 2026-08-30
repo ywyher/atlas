@@ -96,4 +96,15 @@ impl Merge {
             anilist_to_jiten,
         })
     }
+
+    pub async fn load_media(&self) -> Result<Vec<MergedMedia>> {
+        let path = PathBuf::from(&self.data_folder).join(FILE);
+        debug!(path = %path.display(), "loading merged media from disk");
+
+        let json = fs::read_to_string(&path).await?;
+        let merged: Vec<MergedMedia> = serde_json::from_str(&json)?;
+
+        debug!(count = merged.len(), "loaded merged merged");
+        Ok(merged)
+    }
 }

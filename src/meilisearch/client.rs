@@ -40,14 +40,19 @@ impl Client {
 
     let index = self.client.index(INDEX_ANIMES);
     let settings = Settings::new()
-      .with_searchable_attributes(["animes.title"])
+      .with_searchable_attributes([
+        "id",
+        "title.english",
+        "title.romaji",
+        "title.native",
+      ])
       .with_filterable_attributes([
-        "animes.genres",
-        "animes.status",
-        "animes.season",
-        "animes.seasonYear",
-        "animes.format",
-        "animes.popularity",
+        "genres",
+        "status",
+        "season",
+        "seasonYear",
+        "format",
+        "popularity",
       ])
       .with_sortable_attributes([
         "language_stats.wordCount",

@@ -71,9 +71,9 @@ impl Merge {
             .and_then(|jiten_id| jiten_media_by_id.get(jiten_id))
             .map(LanguageStats::from);
 
-        if language_stats.is_none() {
-            debug!(anilist_id = anilist_media.id, "no jiten language stats found for anilist id");
-        }
+        // if language_stats.is_none() {
+        //     debug!(anilist_id = anilist_media.id, "no jiten language stats found for anilist id");
+        // }
 
         Ok(MergedMedia {
             anime: anilist_media.clone(),

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use anyhow::Result;
 use tokio::{fs, time::Instant};
 use tracing::{debug, info, warn};
-use crate::anilist::types::{Media as AnilistMedia};
+use crate::anilist::{types::{Media as AnilistMedia}, client::Client as AnilistClient};
+use crate::jiten::{types::{LanguageStats, Media as JitenMedia}, client::Client as JitenClient};
 use crate::config::Config;
-use crate::jiten::types::{LanguageStats, Media as JitenMedia};
 use crate::merge::types::{LoadDataResponse, MergedMedia};
 use std::path::PathBuf;
 
@@ -12,11 +12,17 @@ const FILE: &str = "merged.json";
 
 pub struct Merge {
     data_folder: String,
+    anilist: AnilistClient,
+    jiten: JitenClient,
 }
 
 impl Merge {
-    pub fn new(config: &Config) -> Self {
-        Self { data_folder: config.data_folder.clone() }
+    pub fn new(config: &Config, anilist: AnilistClient, jiten: JitenClient) -> Self {
+        Self {
+            data_folder: config.data_folder.clone(),
+            anilist,
+            jiten,
+        }
     }
     
     pub async fn merge(&self) -> Result<()> {
@@ -76,30 +82,9 @@ impl Merge {
     }
 
     async fn load_data(&self) -> Result<LoadDataResponse> {
-        let dir = PathBuf::from(&self.data_folder);
-
-        let anilist = dir.join("anilist.json");
-        debug!("loading anilist media from disk");
-        let anilist_json = fs::read_to_string(anilist).await?;
-        let anilist_media: Vec<AnilistMedia> = serde_json::from_str(&anilist_json)?;
-        debug!(count = anilist_media.len(), "loaded anilist media");
-
-        let jiten = dir.join("jiten.json");
-        debug!("loading jiten media from disk");
-        let jiten_json = fs::read_to_string(jiten).await?;
-        let jiten_media: Vec<JitenMedia> = serde_json::from_str(&jiten_json)?;
-        debug!(count = jiten_media.len(), "loaded jiten media");
-
-        let jiten_media_by_id: HashMap<i64, JitenMedia> = jiten_media
-            .into_iter()
-            .map(|m| (m.deck_id, m))
-            .collect();
-
-        let anilist_to_jiten = dir.join("anilist-to-jiten.json");
-        debug!("loading anilist-to-jiten id map from disk");
-        let anilist_to_jiten_json = fs::read_to_string(anilist_to_jiten).await?;
-        let anilist_to_jiten: HashMap<i64, i64> = serde_json::from_str(&anilist_to_jiten_json)?;
-        debug!(count = anilist_to_jiten.len(), "loaded anilist-to-jiten map");
+        let anilist_media = self.anilist.load_media().await?;
+        let jiten_media_by_id = self.jiten.load_media().await?;
+        let anilist_to_jiten = self.jiten.load_id_map().await?;
 
         if anilist_media.is_empty() {
             warn!("loaded anilist media list is empty");

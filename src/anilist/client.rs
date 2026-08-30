@@ -269,6 +269,17 @@ impl Client {
         Ok(())
     }
 
+    pub async fn load_media(&self) -> Result<Vec<Media>> {
+        let path = PathBuf::from(&self.data_folder).join(FILE_MEDIA);
+        debug!(path = %path.display(), "loading anilist media from disk");
+
+        let json = fs::read_to_string(&path).await?;
+        let media: Vec<Media> = serde_json::from_str(&json)?;
+
+        debug!(count = media.len(), "loaded anilist media");
+        Ok(media)
+    }
+
     /// Figures out how long to wait before retrying after a 429.
     /// Prefers `retry-after` (seconds), falls back to `x-ratelimit-reset`
     /// (unix timestamp), falls back to a flat 60s if neither is present/parseable.

@@ -97,4 +97,26 @@ impl Client {
             .parse::<i64>()
             .context("Failed to parse anilist id as i64")
     }
+
+    pub async fn load_media(&self) -> Result<HashMap<i64, Media>> {
+        let path = PathBuf::from(&self.data_folder).join(FILE_MEDIA);
+        debug!(path = %path.display(), "loading jiten media from disk");
+
+        let json = fs::read_to_string(&path).await?;
+        let media: Vec<Media> = serde_json::from_str(&json)?;
+        debug!(count = media.len(), "loaded jiten media");
+
+        Ok(media.into_iter().map(|m| (m.deck_id, m)).collect())
+    }
+    
+    pub async fn load_id_map(&self) -> Result<HashMap<i64, i64>> {
+        let path = PathBuf::from(&self.data_folder).join(FILE_IDS);
+        debug!(path = %path.display(), "loading anilist-to-jiten id map from disk");
+
+        let json = fs::read_to_string(&path).await?;
+        let map: HashMap<i64, i64> = serde_json::from_str(&json)?;
+
+        debug!(count = map.len(), "loaded anilist-to-jiten map");
+        Ok(map)
+    }
 }

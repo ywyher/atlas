@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let jiten = JitenClient::new(&config);
     // jiten.scrape().await?;
 
-    let merge = Merge::new(&config);
+    let merge = Merge::new(&config, anilist, jiten);
     merge.merge().await?;
 
     Ok(())

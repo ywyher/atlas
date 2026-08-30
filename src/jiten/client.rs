@@ -3,12 +3,14 @@ use tokio::{fs, time::Instant};
 use tracing::{debug, info};
 use crate::{jiten::types::{Media, JITEN_LINK_VALUES}, config::Config};
 use std::collections::HashMap;
+use crate::consts::DATA_FOLDER;
+use std::path::PathBuf;
 
 pub struct Client {
     api_url: String,
+    data_folder: String,
 }
 
-const FOLDER: &str = "data";
 const FILE_MEDIA: &str = "jiten.json";
 const FILE_IDS: &str = "anilist-to-jiten.json";
 
@@ -16,6 +18,7 @@ impl Client {
     pub fn new(config: &Config) -> Self {
         Self {
             api_url: config.jiten_api_url.clone(),
+            data_folder: config.data_folder.clone()
         }
     }
 
@@ -35,12 +38,16 @@ impl Client {
         let ids_map = self.map_to_anilist_ids(Some(&data)).await?;
         let ids_json = serde_json::to_string_pretty(&ids_map)?;
 
-        fs::create_dir_all(FOLDER).await?;
-        fs::write(format!("{FOLDER}/{FILE_MEDIA}"), json).await?;
-        fs::write(format!("{FOLDER}/{FILE_IDS}"), ids_json).await?;
+        let dir = PathBuf::from(&self.data_folder);
+        let media_path = dir.join(FILE_MEDIA);
+        let ids_path = dir.join(FILE_IDS);
 
-        info!(path = %format!("{FOLDER}/{FILE_MEDIA}"), "wrote jiten media to disk");
-        info!(path = %format!("{FOLDER}/{FILE_IDS}"), count = ids_map.len(), "wrote anilist-to-jiten id map to disk");
+        fs::create_dir_all(&dir).await?;
+        fs::write(&media_path, json).await?;
+        fs::write(&ids_path, ids_json).await?;
+
+        info!(path = %media_path.display(), "wrote jiten media to disk");
+        info!(path = %ids_path.display(), count = ids_map.len(), "wrote anilist-to-jiten id map to disk");
 
         Ok(())
     }
@@ -54,7 +61,7 @@ impl Client {
             Some(m) => m,
             None => {
                 debug!("media not provided, reading from disk");
-                let path = format!("{FOLDER}/{FILE_MEDIA}");
+                let path = format!("{DATA_FOLDER}/{FILE_MEDIA}");
                 let contents = fs::read_to_string(path)
                     .await
                     .context("Should have been able to read the file")?;

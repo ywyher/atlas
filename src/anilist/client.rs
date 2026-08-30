@@ -11,13 +11,14 @@ use tracing::{debug, info, warn};
 use std::time::Duration;
 use std::collections::HashSet;
 use thiserror::Error;
+use crate::consts::DATA_FOLDER;
+use std::path::PathBuf;
 
 const GET_MEDIA_QUERY: &str = include_str!("./graphql/media.graphql");
 const GET_MEDIA_BATCH_QUERY: &str = include_str!("./graphql/media-batch.graphql");
 const RATE_LIMIT: u32 = 29; // anilist rate limits at 30
 const PER_PAGE: i32 = 50; // anilist's max
 const MAX_PAGE: i32 = 5000 / PER_PAGE; // 100
-const FOLDER: &str = "data";
 const FILE_MEDIA: &str = "anilist.json";
 const FILE_IDS: &str = "anilist-ids.json";
 
@@ -49,6 +50,7 @@ pub struct GetMediaBatchResponse {
 pub struct Client {
     http: reqwest::Client,
     api_url: String,
+    data_folder: String,
     limiter: DefaultDirectRateLimiter,
 }
 
@@ -60,6 +62,7 @@ impl Client {
         Self {
             http: reqwest::Client::new(),
             api_url: config.anilist_api_url.clone(),
+            data_folder: config.data_folder.clone(),
             limiter: RateLimiter::direct(quota),
         }
     }
@@ -114,6 +117,7 @@ impl Client {
             }
         });
 
+        let time = Instant::now();
         let res = self
             .http
             .post(&self.api_url)
@@ -121,6 +125,7 @@ impl Client {
             .send()
             .await
             .context("failed to send request to AniList")?;
+        debug!(elapsed = ?time.elapsed(), "batch request completed");
 
         let status = res.status();
         let headers = res.headers().clone();
@@ -250,13 +255,18 @@ impl Client {
 
         let json = serde_json::to_string_pretty(&data)?;
         let ids = serde_json::to_string_pretty(&seen)?;
-        fs::create_dir_all(FOLDER).await?;
-        fs::write(format!("{FOLDER}/{FILE_MEDIA}"), json).await?;
-        fs::write(format!("{FOLDER}/{FILE_IDS}"), ids).await?;
 
-        info!(path = %format!("{FOLDER}/{FILE_MEDIA}"), "wrote AniList media to disk");
-        info!(path = %format!("{FOLDER}/{FILE_IDS}"), count = seen.len(), "wrote AniList ids to disk");
+        let dir = PathBuf::from(&self.data_folder);
+        let media_path = dir.join(FILE_MEDIA);
+        let ids_path = dir.join(FILE_IDS);
 
+        fs::create_dir_all(&dir).await?;
+        fs::write(&media_path, json).await?;
+        fs::write(&ids_path, ids).await?;
+
+        info!(path = %media_path.display(), "wrote AniList media to disk");
+        info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
+        
         Ok(())
     }
 

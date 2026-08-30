@@ -123,3 +123,24 @@ pub static JITEN_LINK_VALUES: LazyLock<HashMap<&'static str, i32>> =
             ("Amazon", 11),
         ])
     });
+
+impl From<&Media> for LanguageStats {
+    fn from(m: &Media) -> Self {
+        LanguageStats {
+          deck_id: m.deck_id,
+          word_count: m.word_count,
+          unique_word_count: m.unique_word_count,
+          unique_word_used_once_count: m.unique_word_used_once_count,
+          unique_kanji_count: m.unique_kanji_count,
+          unique_kanji_used_once_count: m.unique_kanji_used_once_count,
+          difficulty: m.difficulty,
+          difficulty_raw: m.difficulty_raw,
+          difficulty_algorithmic: m.difficulty_algorithmic,
+          speech_duration: m.speech_duration,
+          speech_mora_count: m.speech_mora_count,
+          speech_speed: m.speech_speed,
+          distinct_voter_count: m.distinct_voter_count,
+          user_adjustment: m.user_adjustment,
+        }
+    }
+}

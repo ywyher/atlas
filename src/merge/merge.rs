@@ -23,7 +23,7 @@ impl Merge {
         info!("starting merge");
         let time = Instant::now();
 
-        let data: LoadDataResponse = Self::load_data().await?;
+        let data: LoadDataResponse = Self::load_data(&self).await?;
 
         let merged = data
             .anilist_media
@@ -75,14 +75,18 @@ impl Merge {
         })
     }
 
-    async fn load_data() -> Result<LoadDataResponse> {
+    async fn load_data(&self) -> Result<LoadDataResponse> {
+        let dir = PathBuf::from(&self.data_folder);
+
+        let anilist = dir.join("anilist.json");
         debug!("loading anilist media from disk");
-        let anilist_json = fs::read_to_string("data/anilist.json").await?;
+        let anilist_json = fs::read_to_string(anilist).await?;
         let anilist_media: Vec<AnilistMedia> = serde_json::from_str(&anilist_json)?;
         debug!(count = anilist_media.len(), "loaded anilist media");
 
+        let jiten = dir.join("jiten.json");
         debug!("loading jiten media from disk");
-        let jiten_json = fs::read_to_string("data/jiten.json").await?;
+        let jiten_json = fs::read_to_string(jiten).await?;
         let jiten_media: Vec<JitenMedia> = serde_json::from_str(&jiten_json)?;
         debug!(count = jiten_media.len(), "loaded jiten media");
 
@@ -91,8 +95,9 @@ impl Merge {
             .map(|m| (m.deck_id, m))
             .collect();
 
+        let anilist_to_jiten = dir.join("anilist-to-jiten.json");
         debug!("loading anilist-to-jiten id map from disk");
-        let anilist_to_jiten_json = fs::read_to_string("data/anilist-to-jiten.json").await?;
+        let anilist_to_jiten_json = fs::read_to_string(anilist_to_jiten).await?;
         let anilist_to_jiten: HashMap<i64, i64> = serde_json::from_str(&anilist_to_jiten_json)?;
         debug!(count = anilist_to_jiten.len(), "loaded anilist-to-jiten map");
 

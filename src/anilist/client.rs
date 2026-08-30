@@ -11,7 +11,6 @@ use tracing::{debug, info, warn};
 use std::time::Duration;
 use std::collections::HashSet;
 use thiserror::Error;
-use crate::consts::DATA_FOLDER;
 use std::path::PathBuf;
 
 const GET_MEDIA_QUERY: &str = include_str!("./graphql/media.graphql");

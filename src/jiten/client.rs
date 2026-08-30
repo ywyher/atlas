@@ -3,7 +3,6 @@ use tokio::{fs, time::Instant};
 use tracing::{debug, info};
 use crate::{jiten::types::{Media, JITEN_LINK_VALUES}, config::Config};
 use std::collections::HashMap;
-use crate::consts::DATA_FOLDER;
 use std::path::PathBuf;
 
 pub struct Client {
@@ -61,7 +60,9 @@ impl Client {
             Some(m) => m,
             None => {
                 debug!("media not provided, reading from disk");
-                let path = format!("{DATA_FOLDER}/{FILE_MEDIA}");
+                
+                let dir = PathBuf::from(&self.data_folder);
+                let path = dir.join(FILE_MEDIA);
                 let contents = fs::read_to_string(path)
                     .await
                     .context("Should have been able to read the file")?;

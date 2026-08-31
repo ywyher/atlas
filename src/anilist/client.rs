@@ -60,20 +60,25 @@ impl Client {
     pub async fn get_media_batch(
         &self,
         page: i32,
-        start: i32,
-        end: i32,
+        start: Option<i32>,
+        end: Option<i32>,
     ) -> Result<GetMediaBatchResponse> {
+        let mut variables = serde_json::Map::new();
+        variables.insert("page".to_string(), json!(page));
+        variables.insert("perPage".to_string(), json!(PER_PAGE));
+
+        if let Some(start) = start {
+            variables.insert("start".to_string(), json!(start));
+        }
+        if let Some(end) = end {
+            variables.insert("end".to_string(), json!(end));
+        }
+
         let body = json!({
             "query": GET_MEDIA_BATCH_QUERY,
-            "variables": {
-                "page": page,
-                "perPage": PER_PAGE,
-                "start": start,
-                "end": end,
-            }
+            "variables": variables,
         });
 
-        let time = Instant::now();
         let res = self
             .http
             .post(&self.api_url)
@@ -81,7 +86,6 @@ impl Client {
             .send()
             .await
             .context("failed to send request to AniList")?;
-        debug!(elapsed = ?time.elapsed(), "batch request completed");
 
         let status = res.status();
         let headers = res.headers().clone();
@@ -123,49 +127,37 @@ impl Client {
         })
     }
 
-    async fn scrape_range(
+    async fn fetch_page_with_retries(
         &self,
-        start: i32,
-        end: i32,
-        seen: &mut HashSet<i32>,
-        out: &mut Vec<Media>,
-        batch: &mut i32
-    ) -> Result<()> {
-        let mut buffer: Vec<Media> = Vec::new();
-        let mut page_number = 1;
-        let mut retries: u32 = 0;
-
-        info!(start, end, "starting scrape range");
+        page_number: i32,
+        start: Option<i32>,
+        end: Option<i32>,
+    ) -> Result<Page> {
+        let mut retries = 0;
 
         loop {
             if self.limiter.check().is_err() {
                 debug!("local rate limiter engaged, waiting for next token");
                 self.limiter.until_ready().await;
             }
-            
+
             let time = Instant::now();
-            debug!(batch = *batch, page = page_number, "requesting batch");
+            debug!(page = page_number, "requesting batch");
             let res = match self.get_media_batch(page_number, start, end).await {
                 Ok(res) => res,
                 Err(e) => {
-                    // Network-level errors (e.g. timeout) are retried too, up to the cap.
                     retries += 1;
                     if retries > MAX_RETRIES {
                         return Err(e).context(format!(
                             "exceeded max retries ({MAX_RETRIES}) for page {page_number}"
                         ));
                     }
-                    warn!(
-                        error = %e,
-                        retries,
-                        max_retries = MAX_RETRIES,
-                        "request failed, retrying after backoff"
-                    );
+                    warn!(error = %e, retries = retries, max_retries = MAX_RETRIES, "request failed, retrying after backoff");
                     tokio::time::sleep(Duration::from_secs(5)).await;
                     continue;
                 }
             };
-            debug!(batch = *batch, elapsed = ?time.elapsed(), "batch request completed");
+            debug!(elapsed = ?time.elapsed(), "batch request completed");
 
             if res.status_code == StatusCode::TOO_MANY_REQUESTS {
                 retries += 1;
@@ -175,7 +167,7 @@ impl Client {
                     ));
                 }
                 let wait = Self::retry_wait(&res.headers);
-                warn!(?wait, retries, max_retries = MAX_RETRIES, "AniList rate limited, backing off");
+                warn!(?wait, retries = retries, max_retries = MAX_RETRIES, "AniList rate limited, backing off");
                 tokio::time::sleep(wait).await;
                 continue;
             }
@@ -192,7 +184,7 @@ impl Client {
                 warn!(
                     status = %res.status_code,
                     body = %res.body.as_deref().unwrap_or_default(),
-                    retries,
+                    retries = retries,
                     max_retries = MAX_RETRIES,
                     "AniList server error, retrying after backoff"
                 );
@@ -200,16 +192,70 @@ impl Client {
                 continue;
             }
 
-            // success path — reset retry counter since we made forward progress
             retries = 0;
+            return Ok(res.page.expect("page present on success status"));
+        }
+    }
 
-            let page = res.page.expect("page present on success status");
+    async fn scrape_start_date_null(
+        &self,
+        seen: &mut HashSet<i32>,
+        out: &mut Vec<Media>,
+        batch: &mut i32,
+    ) -> Result<()> {
+        let mut page_number = 1;
+        let before = out.len();
+        info!("starting scrape null start date entries");
+
+        loop {
+            let page = self
+                .fetch_page_with_retries(page_number, None, None)
+                .await?;
+
+            let mut hit_dated_entry = false;
+            for m in page.media {
+                let is_null = m.start_date.as_ref().map(|d| d.year.is_none()).unwrap_or(true);
+                if !is_null {
+                    hit_dated_entry = true;
+                    break;
+                }
+                if seen.insert(m.id) {
+                    out.push(m);
+                }
+            }
+
+            if hit_dated_entry || !page.page_info.has_next_page {
+                break;
+            }
+
+            *batch += 1;
+            page_number += 1;
+        }
+
+        info!(added = out.len() - before, "scrape null start date entries completed");
+        Ok(())
+    }
+
+    async fn scrape_range(
+        &self,
+        start: i32,
+        end: i32,
+        seen: &mut HashSet<i32>,
+        out: &mut Vec<Media>,
+        batch: &mut i32,
+    ) -> Result<()> {
+        let mut buffer: Vec<Media> = Vec::new();
+        let mut page_number = 1;
+
+        info!(start, end, "starting scrape range");
+        loop {
+            let page = self
+                .fetch_page_with_retries(page_number, Some(start), Some(end))
+                .await?;
             let has_next = page.page_info.has_next_page;
             buffer.extend(page.media);
 
             if !has_next {
-                // < 5000 entries, no issues
-                // window fit entirely under the cap - keep everything, done
                 let before = out.len();
                 for m in std::mem::take(&mut buffer) {
                     if seen.insert(m.id) {
@@ -221,8 +267,9 @@ impl Client {
             }
 
             if page_number >= MAX_PAGE {
-                let last_start_date = buffer.last().and_then(|m| m.start_date.clone());
-                let cutoff = last_start_date
+                let cutoff = buffer
+                    .last()
+                    .and_then(|m| m.start_date.clone())
                     .and_then(|d| Self::fuzzy_date_to_int(&d, -1))
                     .ok_or_else(|| anyhow!("could not compute cutoff date for pagination"))?;
 
@@ -232,14 +279,10 @@ impl Client {
                         out.push(m);
                     }
                 }
-
                 *batch += 1;
 
                 info!(
-                    cutoff,
-                    end,
-                    batch = *batch,
-                    added = out.len() - before,
+                    cutoff, end, batch = *batch, added = out.len() - before,
                     "page limit reached, recursing with new cutoff date"
                 );
                 return Box::pin(self.scrape_range(cutoff, end, seen, out, batch)).await;
@@ -262,7 +305,8 @@ impl Client {
         let time = Instant::now();
 
         info!(start, end, "starting AniList scrape");
-
+        // query first so null entries are pushed before dated entries
+        self.scrape_start_date_null(&mut seen, &mut data, &mut batch).await?;
         self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
         info!(elapsed = ?time.elapsed(), total = data.len(), "AniList scrape complete");
 

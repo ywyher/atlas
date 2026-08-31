@@ -1,5 +1,5 @@
 use anyhow::Result;
-use meilisearch_sdk::{client::Client as Meili, settings::Settings};
+use meilisearch_sdk::{client::Client as Meili, errors::ErrorCode, settings::Settings, tasks::Task};
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
 
@@ -30,13 +30,25 @@ impl Client {
   pub async fn setup_index(&self) -> Result<()> {
     debug!(index = INDEX_ANIMES, "creating index");
 
-    self.client
+    let task = self.client
       .create_index(INDEX_ANIMES, Some("id"))
       .await?
       .wait_for_completion(&self.client, None, None)
       .await?;
 
-    info!(index = INDEX_ANIMES, "index created");
+    match task {
+      Task::Succeeded { .. } => {
+        info!(index = INDEX_ANIMES, "index created");
+      }
+      Task::Failed { content } => {
+        if content.error.error_code == ErrorCode::IndexAlreadyExists {
+          debug!(index = INDEX_ANIMES, "index already exists, skipping creation");
+        } else {
+          anyhow::bail!("failed to create index {INDEX_ANIMES}: {}", content.error);
+        }
+      }
+      _ => {}
+    }
 
     let index = self.client.index(INDEX_ANIMES);
     let settings = Settings::new()
@@ -81,11 +93,10 @@ impl Client {
     let time = Instant::now();
     
     info!(index = INDEX_ANIMES, "adding documents to the index...");
-    let documents = &self.client
+    self.client
       .index(INDEX_ANIMES)
       .add_documents(&media, Some("id"))
-      .await
-      .unwrap();
+      .await?;
     info!(index = INDEX_ANIMES, count = media.len(), elapsed = ?time.elapsed(), "add documents to the index");
 
     Ok(())

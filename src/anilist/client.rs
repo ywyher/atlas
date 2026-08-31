@@ -1,7 +1,7 @@
-use super::types::{AnimeQuery, ApiResponse, Media};
-use crate::{anilist::types::{BatchAnimeQuery, FuzzyDate, Page}, config::Config};
+use super::types::{ApiResponse, Media};
+use crate::{anilist::types::{BatchAnimeQuery, FuzzyDate, MediaSort, MediaStatus, Page}, config::Config};
 use anyhow::{Context, Result, anyhow};
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use nonzero_ext::*;
 use reqwest::{StatusCode, header::HeaderMap};
@@ -10,18 +10,22 @@ use tokio::{fs, time::Instant};
 use tracing::{debug, info, warn};
 use std::time::Duration;
 use std::collections::HashSet;
-use thiserror::Error;
 use std::path::PathBuf;
 
-const GET_MEDIA_QUERY: &str = include_str!("./graphql/media.graphql");
 const GET_MEDIA_BATCH_QUERY: &str = include_str!("./graphql/media-batch.graphql");
 const RATE_LIMIT: u32 = 29; // anilist rate limits at 30
 const PER_PAGE: i32 = 50; // anilist's max
 const MAX_PAGE: i32 = 5000 / PER_PAGE; // 100
-const FILE_MEDIA: &str = "anilist.json";
-const FILE_IDS: &str = "anilist-ids.json";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const MAX_RETRIES: u32 = 5;
+
+const FILE_MEDIA: &str = "anilist.json";
+const FILE_IDS: &str = "anilist-ids.json";
+const FILE_LAST_SCRAPE_TIME_STAMP: &str = "anilist-last-scrape-timestamp.txt";
+
+const SORT_START_DATE: &[MediaSort] = &[MediaSort::StartDate];
+const SORT_UPDATED_AT_DESC: &[MediaSort] = &[MediaSort::UpdatedAtDesc];
+const STATUS_ACTIVE: &[MediaStatus] = &[MediaStatus::Releasing, MediaStatus::NotYetReleased];
 
 #[derive(Debug)]
 pub struct GetMediaBatchResponse {
@@ -62,16 +66,22 @@ impl Client {
         page: i32,
         start: Option<i32>,
         end: Option<i32>,
+        sort: &[MediaSort],
+        status_in: Option<&[MediaStatus]>,
     ) -> Result<GetMediaBatchResponse> {
         let mut variables = serde_json::Map::new();
         variables.insert("page".to_string(), json!(page));
         variables.insert("perPage".to_string(), json!(PER_PAGE));
+        variables.insert("sort".to_string(), json!(sort));
 
         if let Some(start) = start {
             variables.insert("start".to_string(), json!(start));
         }
         if let Some(end) = end {
             variables.insert("end".to_string(), json!(end));
+        }
+        if let Some(statuses) = status_in {
+            variables.insert("status_in".to_string(), json!(statuses));
         }
 
         let body = json!({
@@ -109,7 +119,6 @@ impl Client {
             ));
         }
 
-
         let text = res.text().await.context("failed to read AniList response body")?;
         let data: ApiResponse<BatchAnimeQuery> = serde_json::from_str(&text)
             .with_context(|| format!("failed to parse AniList response as JSON (body={:.500})", text))?;
@@ -132,6 +141,9 @@ impl Client {
         page_number: i32,
         start: Option<i32>,
         end: Option<i32>,
+        batch: &i32,
+        sort: &[MediaSort],
+        status_in: Option<&[MediaStatus]>
     ) -> Result<Page> {
         let mut retries = 0;
 
@@ -142,8 +154,8 @@ impl Client {
             }
 
             let time = Instant::now();
-            debug!(page = page_number, "requesting batch");
-            let res = match self.get_media_batch(page_number, start, end).await {
+            debug!(page = page_number, batch, "requesting batch");
+            let res = match self.get_media_batch(page_number, start, end, sort, status_in).await {
                 Ok(res) => res,
                 Err(e) => {
                     retries += 1;
@@ -209,7 +221,7 @@ impl Client {
 
         loop {
             let page = self
-                .fetch_page_with_retries(page_number, None, None)
+                .fetch_page_with_retries(page_number, None, None, batch, SORT_START_DATE, None)
                 .await?;
 
             let mut hit_dated_entry = false;
@@ -250,7 +262,7 @@ impl Client {
         info!(start, end, "starting scrape range");
         loop {
             let page = self
-                .fetch_page_with_retries(page_number, Some(start), Some(end))
+                .fetch_page_with_retries(page_number, Some(start), Some(end), batch, SORT_START_DATE, None)
                 .await?;
             let has_next = page.page_info.has_next_page;
             buffer.extend(page.media);
@@ -294,14 +306,15 @@ impl Client {
     }
 
     pub async fn scrape(&self) -> Result<()> {
+        let run_started_at = chrono::Utc::now().timestamp();
         let mut seen: HashSet<i32> = HashSet::new();
         let mut data: Vec<Media> = Vec::new();
         let mut batch: i32 = 1;
 
         let start: i32 = 1940 * 10_000;
         let now = chrono::Local::now().date_naive();
-        let tomorrow = now + chrono::Duration::days(1);
-        let end: i32 = tomorrow.year() * 10_000 + tomorrow.month() as i32 * 100 + tomorrow.day() as i32;
+        let future_cutoff = now + chrono::Duration::days(365 * 3);
+        let end: i32 = future_cutoff.year() * 10_000 + future_cutoff.month() as i32 * 100 + future_cutoff.day() as i32;
         let time = Instant::now();
 
         info!(start, end, "starting AniList scrape");
@@ -323,7 +336,129 @@ impl Client {
 
         info!(path = %media_path.display(), "wrote AniList media to disk");
         info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
+
+
+        let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
+
+        // buffer to absorb clock drift / in-flight edits during this run
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
+        info!(next_cutoff, "updated last scrape timestamp");
+
+        Ok(())
+    }
+
+    pub async fn scrape_incremental(&self) -> Result<()> {
+        let dir = PathBuf::from(&self.data_folder);
+        let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
         
+        if !last_scrape_path.exists() {
+            info!("no previous scrape timestamp found, falling back to full scrape");
+            return self.scrape().await;
+        }
+        
+        let run_started_at = chrono::Utc::now().timestamp();
+        let time = Instant::now();
+
+        let cutoff_ts: i64 = fs::read_to_string(&last_scrape_path)
+            .await
+            .context("failed to read last scrape timestamp")?
+            .trim()
+            .parse()
+            .context("failed to parse last scrape timestamp")?;
+
+        info!(cutoff_ts, "starting incremental AniList scrape");
+
+        let existing = self.load_media().await.unwrap_or_default();
+        let mut seen: HashSet<i32> = existing.iter().map(|m| m.id).collect();
+        let mut by_id: std::collections::HashMap<i32, Media> =
+            existing.into_iter().map(|m: Media| (m.id, m)).collect();
+
+        let mut batch: i32 = 1; 
+        let mut page_number = 1;
+        let mut real_changes = 0;
+        let mut noise = 0;
+        let mut new_entries = 0;
+
+        loop {
+            // limiting to NOT_YET_RELEASED, RELEASING means that it wont catch entries shifting from RELEASING to FINISHED
+            // although it will be catched through the weekly fully re-scraping, at the cost of that time delay
+            let page = self
+                .fetch_page_with_retries(page_number, None, None, &batch, SORT_UPDATED_AT_DESC, Some(STATUS_ACTIVE))
+                .await?;
+
+            let mut hit_cutoff = false;
+
+            for m in page.media {
+                let Some(ts) = m.updated_at else {
+                    warn!(id = m.id, "entry missing updated_at, skipping");
+                    continue;
+                };
+
+                if ts < cutoff_ts {
+                    hit_cutoff = true;
+                    break;
+                }
+
+                match by_id.get(&m.id) {
+                    Some(existing) if existing.content_eq(&m) => {
+                        noise += 1;
+                    }
+                    Some(_) => {
+                        debug!(id = m.id, "entry content changed");
+                        real_changes += 1;
+                        by_id.insert(m.id, m);
+                    }
+                    None => {
+                        debug!(id = m.id, "new entry found");
+                        new_entries += 1;
+                        seen.insert(m.id);
+                        by_id.insert(m.id, m);
+                    }
+                }
+            }
+
+            if hit_cutoff || !page.page_info.has_next_page {
+                debug!(
+                    page = page_number,
+                    hit_cutoff,
+                    has_next_page = page.page_info.has_next_page,
+                    "stopping pagination"
+                );
+                break;
+            }
+
+            batch += 1;
+            page_number += 1;
+        }
+
+        info!(
+            real_changes,
+            new_entries,
+            noise,
+            pages = page_number,
+            elapsed = ?time.elapsed(),
+            "incremental scrape fetch complete"
+        );
+
+        let data: Vec<Media> = by_id.into_values().collect();
+        let json = serde_json::to_string_pretty(&data)?;
+        let ids = serde_json::to_string_pretty(&seen)?;
+
+        let media_path = dir.join(FILE_MEDIA);
+        let ids_path = dir.join(FILE_IDS);
+
+        fs::create_dir_all(&dir).await?;
+        fs::write(&media_path, json).await?;
+        fs::write(&ids_path, ids).await?;
+        info!(path = %media_path.display(), total = data.len(), "wrote AniList media to disk");
+        info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
+
+        // buffer to absorb clock drift / in-flight edits during this run
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
+        info!(next_cutoff, "updated last scrape timestamp");
+
         Ok(())
     }
 
@@ -382,10 +517,5 @@ impl Client {
         let shifted = base + chrono::Duration::days(margin_days);
 
         Some(shifted.year() * 10_000 + shifted.month() as i32 * 100 + shifted.day() as i32)
-    }
-
-    fn today_plus_buffer() -> i32 {
-        let now = Local::now();
-        (now.year() + 1) as i32 * 10000 + (now.month() as i32) * 100 + now.day() as i32
     }
 }

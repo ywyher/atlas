@@ -29,18 +29,15 @@ pub struct Page {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
-    pub total: i32,
-    pub last_page: i32,
     pub has_next_page: bool,
 }
 
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Edge<T> {
     pub edges: T
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Media {
     pub id: i32,
@@ -60,25 +57,53 @@ pub struct Media {
     pub average_score: Option<i32>,
     pub popularity: Option<i32>,
     
+    pub tags: Option<Vec<Option<MediaTag>>>,
+
     pub start_date: Option<FuzzyDate>,
     pub end_date: Option<FuzzyDate>,
+    pub updated_at: Option<i64> // Unix timestamp
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl Media {
+pub fn content_eq(&self, other: &Media) -> bool {
+    self.id_mal == other.id_mal
+        && self.title == other.title
+        && self.cover_image == other.cover_image
+        && self.format == other.format
+        && self.status == other.status
+        && self.season == other.season
+        && self.season_year == other.season_year
+        && self.synonyms == other.synonyms
+        && self.banner_image == other.banner_image
+        && self.description == other.description
+        && self.episodes == other.episodes
+        && self.duration == other.duration
+        && self.genres == other.genres
+        && self.start_date == other.start_date
+        && self.end_date == other.end_date
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct MediaTag {
+    pub name: String
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Title {
     pub english: Option<String>,
     pub romaji: Option<String>,
     pub native: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct FuzzyDate {
     pub day: Option<i32>,
     pub month: Option<i32>,
     pub year: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaCoverImage {
     pub medium: Option<String>,
@@ -86,7 +111,7 @@ pub struct MediaCoverImage {
     pub extra_large: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MediaFormat {
     Tv,
@@ -101,7 +126,7 @@ pub enum MediaFormat {
     OneShot,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MediaSeason {
     Winter,
@@ -110,7 +135,7 @@ pub enum MediaSeason {
     Fall,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MediaStatus {
     Finished,
@@ -118,4 +143,46 @@ pub enum MediaStatus {
     NotYetReleased,
     Cancelled,
     Hiatus,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MediaSort {
+    Id,
+    IdDesc,
+    TitleRomaji,
+    TitleRomajiDesc,
+    TitleEnglish,
+    TitleEnglishDesc,
+    TitleNative,
+    TitleNativeDesc,
+    Type,
+    TypeDesc,
+    Format,
+    FormatDesc,
+    StartDate,
+    StartDateDesc,
+    EndDate,
+    EndDateDesc,
+    Score,
+    ScoreDesc,
+    Popularity,
+    PopularityDesc,
+    Trending,
+    TrendingDesc,
+    Episodes,
+    EpisodesDesc,
+    Duration,
+    DurationDesc,
+    Status,
+    StatusDesc,
+    Chapters,
+    ChaptersDesc,
+    Volumes,
+    VolumesDesc,
+    UpdatedAt,
+    UpdatedAtDesc,
+    SearchMatch,
+    Favourites,
+    FavouritesDesc,
 }

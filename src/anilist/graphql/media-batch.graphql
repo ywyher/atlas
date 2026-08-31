@@ -1,15 +1,12 @@
-query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: FuzzyDateInt) {
+query ($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: FuzzyDateInt, $sort: [MediaSort], $status_in: [MediaStatus]) {
   Page(page: $page, perPage: $perPage) {
-    pageInfo { 
-      total
-      hasNextPage
-      lastPage
-    }
+    pageInfo { hasNextPage }
     media(
+      startDate_greater: $start, 
+      startDate_lesser: $end, 
+      sort: $sort, 
+      status_in: $status_in, 
       type: ANIME
-      sort: START_DATE
-      startDate_greater: $start
-      startDate_lesser: $end
     ) {
       id
       idMal
@@ -34,6 +31,11 @@ query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: Fuzzy
       episodes
       duration
       genres
+
+      tags {
+        name
+      }
+
       averageScore
       popularity
 
@@ -48,6 +50,8 @@ query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: Fuzzy
         month
         year
       }
+
+      updatedAt
     }
   }
 }

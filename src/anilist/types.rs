@@ -57,7 +57,8 @@ pub struct Media {
     pub average_score: Option<i32>,
     pub popularity: Option<i32>,
     
-    pub tags: Option<Vec<Option<MediaTag>>>,
+    #[serde(default, deserialize_with = "flatten_tags")]
+    pub tags: Vec<String>,
 
     pub start_date: Option<FuzzyDate>,
     pub end_date: Option<FuzzyDate>,
@@ -82,6 +83,19 @@ pub fn content_eq(&self, other: &Media) -> bool {
         && self.start_date == other.start_date
         && self.end_date == other.end_date
     }
+}
+
+fn flatten_tags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: Option<Vec<Option<MediaTag>>> = Option::deserialize(deserializer)?;
+    Ok(raw
+        .unwrap_or_default()
+        .into_iter()
+        .flatten()
+        .map(|t| t.name)
+        .collect())
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]

@@ -341,7 +341,7 @@ impl Client {
         let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 111 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 
@@ -367,8 +367,15 @@ impl Client {
             .parse()
             .context("failed to parse last scrape timestamp")?;
 
-        info!(cutoff_ts, "starting incremental AniList scrape");
+        let cutoff_dt = chrono::DateTime::from_timestamp(cutoff_ts, 0)
+            .context("cutoff_ts is not a valid unix timestamp")?;
 
+        info!(
+            cutoff_ts,
+            cutoff = %cutoff_dt,
+            "starting incremental AniList scrape"
+        );
+        
         let existing = self.load_media().await.unwrap_or_default();
         let mut seen: HashSet<i32> = existing.iter().map(|m| m.id).collect();
         let mut by_id: std::collections::HashMap<i32, Media> =
@@ -455,7 +462,7 @@ impl Client {
         info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 111 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 

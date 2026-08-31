@@ -85,16 +85,26 @@ pub fn content_eq(&self, other: &Media) -> bool {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum TagValue {
+    Flat(String),
+    Nested(MediaTag),
+}
+
 fn flatten_tags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let raw: Option<Vec<Option<MediaTag>>> = Option::deserialize(deserializer)?;
+    let raw: Option<Vec<Option<TagValue>>> = Option::deserialize(deserializer)?;
     Ok(raw
         .unwrap_or_default()
         .into_iter()
         .flatten()
-        .map(|t| t.name)
+        .map(|t| match t {
+            TagValue::Flat(name) => name,
+            TagValue::Nested(tag) => tag.name,
+        })
         .collect())
 }
 

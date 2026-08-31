@@ -26,13 +26,13 @@ async fn main() -> Result<()> {
     let config = Config::from_env()?;
 
     let anilist = AnilistClient::new(&config);
-    anilist.scrape().await?;
+    // anilist.scrape().await?;
 
     let jiten = JitenClient::new(&config);
-    jiten.scrape().await?;
+    // jiten.scrape().await?;
     
     let merge = Merge::new(&config, anilist, jiten);
-    merge.merge().await?;
+    // merge.merge().await?;
 
     let meili = MeiliClient::new(&config, merge);
     meili.setup().await?;

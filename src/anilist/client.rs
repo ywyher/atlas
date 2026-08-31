@@ -341,7 +341,7 @@ impl Client {
         let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 111 hours
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 
@@ -462,7 +462,7 @@ impl Client {
         info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 111 hours
+        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 

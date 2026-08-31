@@ -45,6 +45,7 @@ impl Client {
         "title.english",
         "title.romaji",
         "title.native",
+        "synonyms",
       ])
       .with_filterable_attributes([
         "genres",

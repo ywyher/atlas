@@ -36,12 +36,6 @@ query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: Fuzzy
       genres
       averageScore
       popularity
-      
-      nextAiringEpisode {
-        episode
-        airingAt
-        timeUntilAiring
-      }
 
       startDate {
         day
@@ -53,112 +47,6 @@ query ScrapeAnilist($page: Int, $perPage: Int, $start: FuzzyDateInt, $end: Fuzzy
         day
         month
         year
-      }
-      
-      studios {
-        edges {
-          isMain
-          node {
-            name
-            isAnimationStudio
-          }
-        }
-      }
-      
-      characters {
-        edges {
-          node {
-            name {
-              first
-              last
-            }
-            age
-            image {
-              large
-            }
-          }
-          role
-          voiceActors {
-            name {
-              first
-              last
-            }
-            image {
-              large
-            }
-          }
-        }
-      }
-      
-      relations {
-        edges {
-          relationType
-          node {
-            id
-            title {
-              english
-              romaji
-              native
-            }
-            bannerImage
-            coverImage {
-              medium
-              large
-              extraLarge
-            }
-            startDate {
-              year
-              month
-              day
-            }
-            endDate {
-              year
-              month
-              day
-            }
-            status
-            format
-          }
-        }
-      }
-      
-      recommendations {
-        edges {
-          node {
-            mediaRecommendation {
-              id
-              title {
-                english
-                romaji
-                native
-              }
-              coverImage {
-                medium
-                large
-                extraLarge
-              }
-              status
-              format
-              averageScore
-              seasonYear
-            }
-          }
-        }
-      }
-      
-      trailer {
-        thumbnail
-        id
-        site
-      }
-      
-      externalLinks {
-        id
-        site
-        siteId
-        type
-        color
-        url
       }
     }
   }

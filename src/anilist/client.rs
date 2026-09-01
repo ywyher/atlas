@@ -42,6 +42,16 @@ pub struct Client {
     limiter: DefaultDirectRateLimiter,
 }
 
+pub struct ScrapeResponse {
+    pub total: usize,
+}
+
+pub struct ScrapeIncrementalResponse {
+    pub real_changes: usize,
+    pub new_entries: usize,
+    pub noise: u32,
+}
+
 
 impl Client {
     pub fn new(config: &Config) -> Self {
@@ -305,7 +315,7 @@ impl Client {
         }
     }
 
-    pub async fn scrape(&self) -> Result<()> {
+    pub async fn scrape(&self) -> Result<ScrapeResponse> {
         let run_started_at = chrono::Utc::now().timestamp();
         let mut seen: HashSet<i32> = HashSet::new();
         let mut data: Vec<Media> = Vec::new();
@@ -317,11 +327,14 @@ impl Client {
         let end: i32 = future_cutoff.year() * 10_000 + future_cutoff.month() as i32 * 100 + future_cutoff.day() as i32;
         let time = Instant::now();
 
+
+        let total = data.len();
+
         info!(start, end, "starting AniList scrape");
         // query first so null entries are pushed before dated entries
         self.scrape_start_date_null(&mut seen, &mut data, &mut batch).await?;
         self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
-        info!(elapsed = ?time.elapsed(), total = data.len(), "AniList scrape complete");
+        info!(elapsed = ?time.elapsed(), total, "AniList scrape complete");
 
         let json = serde_json::to_string_pretty(&data)?;
         let ids = serde_json::to_string_pretty(&seen)?;
@@ -341,20 +354,26 @@ impl Client {
         let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        let next_cutoff = run_started_at - 3 * 3600; // subtracts 3 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 
-        Ok(())
+        Ok(ScrapeResponse { total })
     }
 
-    pub async fn scrape_incremental(&self) -> Result<()> {
+    pub async fn scrape_incremental(&self) -> Result<ScrapeIncrementalResponse> {
         let dir = PathBuf::from(&self.data_folder);
         let last_scrape_path = dir.join(FILE_LAST_SCRAPE_TIME_STAMP);
         
         if !last_scrape_path.exists() {
             info!("no previous scrape timestamp found, falling back to full scrape");
-            return self.scrape().await;
+            let res = self.scrape().await?;
+
+            return Ok(ScrapeIncrementalResponse { 
+                real_changes: res.total, 
+                new_entries: res.total, 
+                noise: 0 
+            });
         }
         
         let run_started_at = chrono::Utc::now().timestamp();
@@ -462,11 +481,15 @@ impl Client {
         info!(path = %ids_path.display(), count = seen.len(), "wrote AniList ids to disk");
 
         // buffer to absorb clock drift / in-flight edits during this run
-        let next_cutoff = run_started_at - 1 * 3600; // subtracts 1 hours
+        let next_cutoff = run_started_at - 3 * 3600; // subtracts 3 hours
         fs::write(&last_scrape_path, next_cutoff.to_string()).await?;
         info!(next_cutoff, "updated last scrape timestamp");
 
-        Ok(())
+        Ok(ScrapeIncrementalResponse { 
+            real_changes,
+            new_entries,
+            noise
+         })
     }
 
     pub async fn load_media(&self) -> Result<Vec<Media>> {

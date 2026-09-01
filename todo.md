@@ -1,1 +1,0 @@
-continue with the rest of merge and jiten and meilisearch if scrape_incremental actually found changes

@@ -326,13 +326,12 @@ impl Client {
         let end: i32 = future_cutoff.year() * 10_000 + future_cutoff.month() as i32 * 100 + future_cutoff.day() as i32;
         let time = Instant::now();
 
-
-        let total = data.len();
-
         info!(start, end, "starting AniList scrape");
         // query first so null entries are pushed before dated entries
         self.scrape_start_date_null(&mut seen, &mut data, &mut batch).await?;
         self.scrape_range(start, end, &mut seen, &mut data, &mut batch).await?;
+        
+        let total = data.len();
         info!(elapsed = ?time.elapsed(), total, "AniList scrape complete");
 
         let json = serde_json::to_string_pretty(&data)?;

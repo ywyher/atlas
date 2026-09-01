@@ -214,7 +214,6 @@ impl Client {
                 continue;
             }
 
-            retries = 0;
             return Ok(res.page.expect("page present on success status"));
         }
     }

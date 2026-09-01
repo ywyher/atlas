@@ -1,16 +1,9 @@
-#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename = "Media")]
 pub struct ApiResponse<T> {
     pub data: Option<T>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AnimeQuery {
-    #[serde(rename = "Media")]
-    pub media: Option<Media>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,11 +23,6 @@ pub struct Page {
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     pub has_next_page: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct Edge<T> {
-    pub edges: T
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]

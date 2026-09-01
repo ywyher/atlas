@@ -8,11 +8,9 @@ mod jiten;
 mod merge;
 mod meilisearch;
 
-use std::path::PathBuf;
-
 use crate::anilist::client::Client as AnilistClient;
 use crate::jiten::client::Client as JitenClient;
-use crate::merge::merge::Merge;
+use crate::merge::Merge;
 use crate::meilisearch::client::Client as MeiliClient;
 use crate::config::Config;
 use anyhow::Result;
@@ -22,7 +20,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    // global -> allows args after commands
+    // global -> allows args after
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     debug: u8,
 

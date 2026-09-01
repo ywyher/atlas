@@ -2,8 +2,7 @@ use anyhow::Result;
 use meilisearch_sdk::{client::Client as Meili, errors::ErrorCode, settings::Settings, tasks::Task};
 use tokio::time::Instant;
 use tracing::{debug, info, warn};
-
-use crate::{config::Config, merge::{merge::Merge, types::MergedMedia}};
+use crate::{config::Config, merge::Merge};
 
 const INDEX_ANIMES: &str = "animes";
 
@@ -117,13 +116,14 @@ impl Client {
     info!(index = INDEX_ANIMES, "adding documents to the index...");
     self.client
       .index(INDEX_ANIMES)
-      .add_documents(&media, Some("id"))
+      .add_documents(media, Some("id"))
       .await?;
     info!(index = INDEX_ANIMES, count = media.len(), elapsed = ?time.elapsed(), "add documents to the index");
 
     Ok(())
   }
 
+  #[allow(dead_code)]
   pub async fn nuke(&self) -> Result<()> {
     warn!(index = INDEX_ANIMES, "deleting index - all documents and settings will be lost");
 

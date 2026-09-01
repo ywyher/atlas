@@ -1,22 +1,19 @@
 services:
-  meilisearch:
-    image: getmeili/meilisearch:latest
-    container_name: meilisearch
-    ports:
-      - "7700:7700"
-    environment:
-      - MEILI_HTTP_PAYLOAD_SIZE_LIMIT=209715200
+  atlas:
+    build: .
+    command: ["incremental", "-d"]
+    env_file:
+      - .env
+      - .env.local
+    networks:
+      - atlas_default
     volumes:
-      - meili_data:/meili_data
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
+      - atlas_data:/atlas_data
 
 volumes:
-  meili_data:
+  atlas_data:
     driver: local
+
+networks:
+  atlas_default:
+    external: true

@@ -1,16 +1,40 @@
 services:
   atlas:
     build: .
-    command: ["incremental", "-d"]
-    env_file:
-      - .env
-      - .env.local
+    image: atlas
+    command: ["incremental", "-d"] # fallback to full if no data so safer to avoid full re-scrape by mistake
     networks:
       - atlas_default
     volumes:
-      - atlas_data:/atlas_data
+      - atlas_data:/app/data
+      - ${PWD}/.env:/app/.env:ro
+      - ${PWD}/.env.local:/app/.env.local:ro
+    restart: "no"
+
+  ofelia:
+    image: mcuadros/ofelia:latest
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      # every day at 3:00:00 AM
+      ofelia.job-run.daily-incremental.schedule: "0 0 3 * * *"
+      ofelia.job-run.daily-incremental.image: "atlas"
+      ofelia.job-run.daily-incremental.command: "incremental -d"
+      ofelia.job-run.daily-incremental.network: "atlas_default"
+      ofelia.job-run.daily-incremental.no-overlap: "true"
+      ofelia.job-run.daily-incremental.volume: '["atlas_atlas_data:/app/data", "${PWD}/.env:/app/.env:ro", "${PWD}/.env.local:/app/.env.local:ro"]'
+
+      # every week at 1:00:00 AM
+      ofelia.job-run.weekly-full.schedule: "0 0 1 * * 0"
+      ofelia.job-run.weekly-full.image: "atlas"
+      ofelia.job-run.weekly-full.command: "full -d"
+      ofelia.job-run.weekly-full.network: "atlas_default"
+      ofelia.job-run.weekly-full.no-overlap: "true"
+      ofelia.job-run.weekly-full.volume: '["atlas_atlas_data:/app/data", "${PWD}/.env:/app/.env:ro", "${PWD}/.env.local:/app/.env.local:ro"]'
 
 volumes:
+  # atlas_atlas_data since local -> docker prefix the project name
   atlas_data:
     driver: local
 
